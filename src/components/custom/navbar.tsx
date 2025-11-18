@@ -3,24 +3,41 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LogOut, User, CreditCard, FileText } from 'lucide-react';
-import { getCurrentUser, logout } from '@/lib/auth';
+import { logout } from '@/lib/auth';
 import { getCredits } from '@/lib/credits';
 import { useEffect, useState } from 'react';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 export default function Navbar() {
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
   const [credits, setCredits] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const currentUser = getCurrentUser();
-    setUser(currentUser);
-    if (currentUser) {
-      setCredits(getCredits());
+    async function loadUserData() {
+      try {
+        // Buscar usuário atual
+        const { data: { user: currentUser } } = await supabaseBrowser.auth.getUser();
+        
+        if (currentUser) {
+          setUser(currentUser);
+          
+          // Buscar créditos do usuário
+          const userCredits = await getCredits(currentUser.id);
+          setCredits(userCredits);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados do usuário:', error);
+      } finally {
+        setLoading(false);
+      }
     }
+
+    loadUserData();
   }, [pathname]);
 
-  if (!user) return null;
+  if (loading || !user) return null;
 
   return (
     <nav className="border-b border-white/10 bg-[#1A1A1A]">
@@ -82,7 +99,7 @@ export default function Navbar() {
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex items-center gap-2">
                 <User className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-400">{user.name}</span>
+                <span className="text-sm text-gray-400">{user.email}</span>
               </div>
               <button
                 onClick={logout}

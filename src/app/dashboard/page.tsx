@@ -10,30 +10,60 @@ import {
   TrendingUp, 
   Clock,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Zap
 } from 'lucide-react';
 import Navbar from '@/components/custom/navbar';
-import { getCurrentUser, isAuthenticated } from '@/lib/auth';
-import { getCredits } from '@/lib/credits';
-import { PLANS } from '@/lib/types';
+import { supabaseBrowser } from '@/lib/supabase-browser';
+import { PLAN_CONFIG } from '@/lib/plans';
+
+interface UserProfile {
+  id: string;
+  email: string;
+  plan: 'free' | 'premium' | 'business';
+  credits: number;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [credits, setCredits] = useState(0);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push('/login');
-      return;
-    }
+    loadUserProfile();
+  }, []);
 
-    const currentUser = getCurrentUser();
-    setUser(currentUser);
-    setCredits(getCredits());
-    setLoading(false);
-  }, [router]);
+  async function loadUserProfile() {
+    try {
+      // Verificar autenticação
+      const { data: { user }, error: authError } = await supabaseBrowser.auth.getUser();
+      
+      if (authError || !user) {
+        router.push('/login');
+        return;
+      }
+
+      // Buscar perfil completo
+      const { data: profileData, error: profileError } = await supabaseBrowser
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Erro ao buscar perfil:', profileError);
+        router.push('/login');
+        return;
+      }
+
+      setProfile(profileData);
+    } catch (error) {
+      console.error('Erro ao carregar perfil:', error);
+      router.push('/login');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -43,7 +73,12 @@ export default function DashboardPage() {
     );
   }
 
-  const planDetails = user ? PLANS[user.plan] : null;
+  if (!profile) {
+    return null;
+  }
+
+  const planDetails = PLAN_CONFIG[profile.plan];
+  const userName = profile.email.split('@')[0];
 
   return (
     <div className="min-h-screen bg-[#1A1A1A]">
@@ -53,47 +88,59 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">
-            Olá, {user?.name}! 👋
+            Olá, {userName}! 👋
           </h1>
           <p className="text-gray-400">
             Bem-vindo ao seu painel de controle
           </p>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Credits Card */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#4D6CFA] to-[#6A4DFB] flex items-center justify-center">
-                <CreditCard className="w-6 h-6 text-white" />
+        {/* Card de Plano e Créditos - DESTAQUE */}
+        <div className="mb-8 bg-gradient-to-r from-[#4D6CFA]/20 to-[#6A4DFB]/20 border border-[#4D6CFA]/30 rounded-2xl p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Plano Atual */}
+            <div className="text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
+                <Zap className="w-5 h-5 text-[#4D6CFA]" />
+                <span className="text-sm text-gray-400">Plano Atual</span>
               </div>
-              <span className="text-sm text-gray-400">Disponível</span>
+              <div className="text-3xl font-bold text-white mb-1">
+                {planDetails.name}
+              </div>
+              <p className="text-sm text-gray-400">
+                {planDetails.credits} créditos inclusos
+              </p>
             </div>
-            <div className="text-3xl font-bold text-white mb-1">{credits}</div>
-            <div className="text-sm text-gray-400">Créditos</div>
-          </div>
 
-          {/* Plan Card */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#6A4DFB] to-[#4D6CFA] flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-white" />
+            {/* Créditos Disponíveis */}
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <CreditCard className="w-5 h-5 text-[#4D6CFA]" />
+                <span className="text-sm text-gray-400">Créditos Disponíveis</span>
               </div>
+              <div className="text-4xl font-bold text-white mb-1">
+                {profile.credits}
+              </div>
+              <p className="text-sm text-gray-400">
+                créditos restantes
+              </p>
+            </div>
+
+            {/* Ação */}
+            <div className="flex items-center justify-center md:justify-end">
               <Link
                 href="/planos"
-                className="text-sm text-[#4D6CFA] hover:text-[#6A4DFB] font-medium"
+                className="px-6 py-3 rounded-lg bg-gradient-to-r from-[#4D6CFA] to-[#6A4DFB] text-white font-medium hover:opacity-90 transition-opacity"
               >
-                Upgrade
+                Comprar Créditos
               </Link>
             </div>
-            <div className="text-3xl font-bold text-white mb-1">
-              {planDetails?.name}
-            </div>
-            <div className="text-sm text-gray-400">Plano atual</div>
           </div>
+        </div>
 
-          {/* Transcriptions Card */}
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Transcrições */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#4D6CFA] to-[#6A4DFB] flex items-center justify-center">
@@ -103,6 +150,30 @@ export default function DashboardPage() {
             </div>
             <div className="text-3xl font-bold text-white mb-1">0</div>
             <div className="text-sm text-gray-400">Transcrições</div>
+          </div>
+
+          {/* Resumos */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#6A4DFB] to-[#4D6CFA] flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-sm text-gray-400">Gerados</span>
+            </div>
+            <div className="text-3xl font-bold text-white mb-1">0</div>
+            <div className="text-sm text-gray-400">Resumos</div>
+          </div>
+
+          {/* Tempo Economizado */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#4D6CFA] to-[#6A4DFB] flex items-center justify-center">
+                <Clock className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-sm text-gray-400">Estimado</span>
+            </div>
+            <div className="text-3xl font-bold text-white mb-1">0h</div>
+            <div className="text-sm text-gray-400">Economizadas</div>
           </div>
         </div>
 
@@ -188,23 +259,15 @@ export default function DashboardPage() {
               <ul className="space-y-2 text-sm text-gray-300">
                 <li className="flex items-center gap-2">
                   <CheckCircle className="w-4 h-4 text-[#4D6CFA]" />
-                  Upload de arquivo: 10 créditos
+                  Transcrição curta: 1 crédito
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle className="w-4 h-4 text-[#4D6CFA]" />
-                  Transcrição: 20 créditos
+                  Transcrição longa: 5 créditos
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle className="w-4 h-4 text-[#4D6CFA]" />
-                  Resumo automático: 15 créditos
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-[#4D6CFA]" />
-                  Resumo avançado: 25 créditos
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-[#4D6CFA]" />
-                  Exportar arquivo: 2 créditos
+                  Resumo automático: 1 crédito
                 </li>
               </ul>
             </div>

@@ -1,43 +1,34 @@
-// Sistema de créditos
-import { getCurrentUser } from './auth';
-import { CREDIT_COSTS } from './types';
+"use server";
 
-const STORAGE_KEY = 'transcribebr_user';
+import { getSupabaseAdmin } from './supabase-server';
 
-export function getCredits(): number {
-  const user = getCurrentUser();
-  return user?.credits || 0;
+export async function getCredits(userId: string) {
+  const supabase = await getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('credits')
+    .select('amount')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) return 0;
+  return data?.amount ?? 0;
 }
 
-export function hasEnoughCredits(cost: number): boolean {
-  return getCredits() >= cost;
+export async function setCredits(userId: string, amount: number) {
+  const supabase = await getSupabaseAdmin();
+  await supabase
+    .from('credits')
+    .upsert({ user_id: userId, amount });
 }
 
-export function deductCredits(cost: number): boolean {
-  const user = getCurrentUser();
-  if (!user) return false;
-  
-  if (user.credits < cost) {
-    return false;
-  }
-  
-  user.credits -= cost;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+export async function addCredits(userId: string, amount: number) {
+  const current = await getCredits(userId);
+  await setCredits(userId, current + amount);
+}
+
+export async function deductCredits(userId: string, amount: number) {
+  const current = await getCredits(userId);
+  if (current < amount) return false;
+  await setCredits(userId, current - amount);
   return true;
-}
-
-export function addCredits(amount: number): void {
-  const user = getCurrentUser();
-  if (!user) return;
-  
-  user.credits += amount;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-}
-
-export function getCreditCost(action: keyof typeof CREDIT_COSTS): number {
-  return CREDIT_COSTS[action];
-}
-
-export function formatCredits(credits: number): string {
-  return credits.toLocaleString('pt-BR');
 }

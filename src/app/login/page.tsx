@@ -31,16 +31,18 @@ export default function LoginPage() {
       
       if (result.success) {
         setSuccess('✅ Login realizado com sucesso! Redirecionando...');
+        
+        // Redirecionar imediatamente
         setTimeout(() => {
-          router.push('/dashboard');
-        }, 1500);
+          window.location.href = '/dashboard';
+        }, 500);
       } else {
         setError(`❌ ${result.error || 'Email ou senha inválidos'}`);
+        setLoading(false);
       }
     } catch (err) {
       console.error('Erro no login:', err);
       setError('❌ Erro ao fazer login. Tente novamente mais tarde.');
-    } finally {
       setLoading(false);
     }
   };
@@ -63,7 +65,7 @@ export default function LoginPage() {
 
           {/* Success Message */}
           {success && (
-            <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-3">
               <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-emerald-400 font-medium">{success}</p>
             </div>
@@ -71,7 +73,7 @@ export default function LoginPage() {
 
           {/* Error Message */}
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-start gap-3">
               <XCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-red-400 font-medium">{error}</p>
             </div>
@@ -93,6 +95,7 @@ export default function LoginPage() {
                   className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4D6CFA] focus:border-transparent transition-all"
                   placeholder="seu@email.com"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -112,6 +115,7 @@ export default function LoginPage() {
                   className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4D6CFA] focus:border-transparent transition-all"
                   placeholder="••••••••"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>

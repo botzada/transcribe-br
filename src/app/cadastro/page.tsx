@@ -45,9 +45,12 @@ export default function CadastroPage() {
       
       if (result.success) {
         setSuccess('✅ Conta criada com sucesso! Você ganhou 30 créditos grátis. Redirecionando...');
+        
+        // CRÍTICO: Usar window.location.href para garantir redirecionamento
+        // Isso força um reload completo e garante que os cookies sejam aplicados
         setTimeout(() => {
-          router.push('/dashboard');
-        }, 2000);
+          window.location.href = '/dashboard';
+        }, 1500);
       } else {
         setError(`❌ Erro ao criar conta: ${result.error}`);
       }
@@ -85,7 +88,7 @@ export default function CadastroPage() {
 
           {/* Error Message */}
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-start gap-3 animate-in fade-in-from-top-2 duration-300">
               <XCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-red-400 font-medium">{error}</p>
             </div>
@@ -107,6 +110,7 @@ export default function CadastroPage() {
                   className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4D6CFA] focus:border-transparent transition-all"
                   placeholder="João Silva"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -126,6 +130,7 @@ export default function CadastroPage() {
                   className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4D6CFA] focus:border-transparent transition-all"
                   placeholder="seu@email.com"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -145,6 +150,7 @@ export default function CadastroPage() {
                   className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4D6CFA] focus:border-transparent transition-all"
                   placeholder="••••••••"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -164,6 +170,7 @@ export default function CadastroPage() {
                   className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4D6CFA] focus:border-transparent transition-all"
                   placeholder="••••••••"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>

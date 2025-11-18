@@ -1,12 +1,22 @@
 'use server';
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getSupabaseServer } from '@/lib/supabase-server';
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 
-// Registrar novo usuário usando admin client (bypassa RLS)
+/**
+ * REGISTRAR NOVO USUÁRIO
+ * 
+ * Fluxo correto:
+ * 1. Criar usuário no Auth usando admin (bypassa RLS)
+ * 2. Criar perfil usando admin (bypassa RLS)
+ * 3. Fazer login automático usando client normal (cria sessão no browser)
+ */
 export async function registerUser(email: string, password: string, name?: string) {
   try {
-    // Criar usuário no Supabase Auth usando admin client
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    // 1. Criar usuário no Supabase Auth usando admin client
+    const { data: adminData, error: adminError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
       email_confirm: true, // Auto-confirmar email
@@ -15,119 +25,171 @@ export async function registerUser(email: string, password: string, name?: strin
       }
     });
 
-    if (error) {
-      console.error("Erro ao registrar:", error.message);
-      return { success: false, error: error.message };
+    if (adminError) {
+      console.error("❌ Erro ao registrar:", adminError.message);
+      return { success: false, error: adminError.message };
     }
 
-    if (!data.user) {
+    if (!adminData.user) {
       return { success: false, error: "Usuário não retornado" };
     }
 
-    // Criar perfil na tabela profiles usando admin client (bypassa RLS)
-    // IMPORTANTE: id deve ser exatamente data.user.id
+    console.log("✅ Usuário criado no Auth:", adminData.user.id);
+
+    // 2. Criar perfil na tabela profiles usando admin client (bypassa RLS)
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .insert({
-        id: data.user.id,           // IMPORTANTÍSSIMO: deve ser exatamente user.id
-        email: data.user.email!,
-        credits: 30,
+        id: adminData.user.id,
+        email: adminData.user.email!,
         plan: 'free',
+        credits: 30
       });
 
     if (profileError) {
-      console.error('Erro ao criar perfil do usuário:', profileError.message);
+      console.error('❌ Erro ao criar perfil:', profileError.message);
       return { success: false, error: profileError.message };
     }
 
-    return { 
-      success: true, 
-      user: {
-        id: data.user.id,
-        email: data.user.email!,
-        name: name || email.split('@')[0],
-        plan: 'free',
-        credits: 30,
-      }
-    };
-  } catch (error: any) {
-    console.error('Erro ao registrar:', error);
-    return { success: false, error: error.message || 'Erro desconhecido' };
-  }
-}
+    console.log("✅ Perfil criado com sucesso");
 
-// Login do usuário e criar perfil automaticamente se não existir
-export async function loginUser(email: string, password: string) {
-  try {
-    // 1. Fazer login com Supabase Auth usando admin client
-    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    // 3. CRÍTICO: Fazer login automático usando client normal (cria sessão no browser)
+    const supabase = await getSupabaseServer();
+    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      console.error('Erro ao fazer login:', error.message);
-      return { success: false, error: error.message };
+    if (loginError) {
+      console.error('❌ Erro ao fazer login automático:', loginError.message);
+      return { success: false, error: 'Conta criada mas erro ao fazer login: ' + loginError.message };
     }
 
-    if (!data.user) {
-      return { success: false, error: 'Usuário não encontrado' };
+    if (!loginData.session) {
+      return { success: false, error: 'Conta criada mas sessão não foi estabelecida' };
     }
 
-    // 2. Buscar perfil do usuário
+    console.log("✅ Login automático realizado, sessão criada");
+
+    // Revalidar cache
+    revalidatePath('/dashboard');
+    revalidatePath('/');
+    
+    return { 
+      success: true, 
+      user: {
+        id: adminData.user.id,
+        email: adminData.user.email!,
+        name: name || email.split('@')[0],
+        plan: 'free',
+        credits: 30,
+      },
+      shouldRedirect: true
+    };
+  } catch (error: any) {
+    console.error('❌ Erro ao registrar:', error);
+    return { success: false, error: error.message || 'Erro desconhecido' };
+  }
+}
+
+/**
+ * LOGIN DO USUÁRIO
+ * 
+ * Fluxo correto:
+ * 1. Fazer login usando client normal (cria sessão no browser)
+ * 2. Verificar se perfil existe
+ * 3. Se não existir, criar usando admin (bypassa RLS)
+ */
+export async function loginUser(email: string, password: string) {
+  try {
+    // 1. CRÍTICO: Fazer login com client normal (cria sessão no browser)
+    const supabase = await getSupabaseServer();
+    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (loginError) {
+      console.error('❌ Erro ao fazer login:', loginError.message);
+      return { success: false, error: 'Email ou senha inválidos' };
+    }
+
+    if (!loginData.user || !loginData.session) {
+      return { success: false, error: 'Erro ao estabelecer sessão' };
+    }
+
+    console.log("✅ Login realizado, sessão criada:", loginData.user.email);
+
+    // 2. Buscar perfil do usuário usando admin
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('*')
-      .eq('id', data.user.id)
+      .eq('id', loginData.user.id)
       .single();
 
     // 3. Se perfil não existir, criar automaticamente usando admin (bypassa RLS)
-    if (!profile || profileError) {
-      console.log('Perfil não encontrado, criando automaticamente...');
+    if (!profile) {
+      console.log('⚠️ Perfil não encontrado, criando automaticamente...');
       
-      // IMPORTANTE: id deve ser exatamente data.user.id para passar pela policy RLS
-      const { data: newProfile, error: insertError } = await supabaseAdmin
+      const { error: insertError } = await supabaseAdmin
         .from('profiles')
         .insert({
-          id: data.user.id,           // IMPORTANTÍSSIMO: deve ser exatamente user.id
-          email: data.user.email!,
-          credits: 30,
+          id: loginData.user.id,
+          email: loginData.user.email!,
           plan: 'free',
-        })
-        .select()
-        .single();
+          credits: 30
+        });
 
       if (insertError) {
-        console.error('Erro ao criar perfil automaticamente:', insertError.message);
-        return { success: false, error: insertError.message };
+        console.error('❌ Erro ao criar perfil automaticamente:', insertError.message);
+        // Não retornar erro - usuário já está logado
+      } else {
+        console.log("✅ Perfil criado automaticamente");
       }
-
-      // Retornar com perfil recém-criado
-      return {
-        success: true,
-        user: {
-          id: data.user.id,
-          email: data.user.email!,
-          name: data.user.user_metadata?.name || data.user.email!.split('@')[0],
-          plan: newProfile.plan,
-          credits: newProfile.credits,
-        }
-      };
     }
 
-    // 4. Retornar objeto completo com perfil existente
+    // 4. Revalidar cache
+    revalidatePath('/dashboard');
+    revalidatePath('/');
+
+    // 5. CRÍTICO: Retornar sucesso e deixar o client fazer o redirecionamento
     return {
       success: true,
       user: {
-        id: data.user.id,
-        email: data.user.email!,
-        name: data.user.user_metadata?.name || profile.email.split('@')[0],
-        plan: profile.plan,
-        credits: profile.credits,
-      }
+        id: loginData.user.id,
+        email: loginData.user.email!,
+        name: loginData.user.user_metadata?.name || (profile?.email || loginData.user.email!).split('@')[0],
+        plan: profile?.plan || 'free',
+        credits: profile?.credits || 30,
+      },
+      shouldRedirect: true
     };
   } catch (error: any) {
-    console.error('Erro ao fazer login:', error);
+    console.error('❌ Erro ao fazer login:', error);
+    return { success: false, error: error.message || 'Erro desconhecido' };
+  }
+}
+
+/**
+ * LOGOUT DO USUÁRIO
+ */
+export async function logoutUser() {
+  try {
+    const supabase = await getSupabaseServer();
+    const { error } = await supabase.auth.signOut();
+    
+    if (error) {
+      console.error('❌ Erro ao fazer logout:', error.message);
+      return { success: false, error: error.message };
+    }
+
+    console.log("✅ Logout realizado com sucesso");
+    
+    // Revalidar cache e redirecionar
+    revalidatePath('/');
+    redirect('/login');
+  } catch (error: any) {
+    console.error('❌ Erro ao fazer logout:', error);
     return { success: false, error: error.message || 'Erro desconhecido' };
   }
 }
